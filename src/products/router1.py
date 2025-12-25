@@ -1,70 +1,89 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
-from src.products.service1 import ProductService
-from src.products.shemas1 import ProductCreate
-from src.products.models1 import Product
+from src.users.service import UserService
+from src.users.shemas import UserCreate, UserRead, UserUpdate
+from src.products.shemas1 import ProductRead
+from src.auth.utils import get_current_active_user, get_current_user  # ✅ Correct import
 
-router = APIRouter(prefix="/products", tags=["products"])
+router = APIRouter(prefix="/users", tags=["users"])
 
-@router.post("/", response_model=Product)
-def create_product(
-    data: ProductCreate,
+@router.post("/", response_model=UserRead)
+async def create_user(
+    data: UserCreate,
+    session: Session = Depends(get_session)
+): 
+    service = UserService(session)
+    user = service.create_user(name=data.name, email=data.email)
+    return user
+
+@router.get("/{user_id}", response_model=UserRead)
+async def get_user_by_id(
+    user_id: int,
     session: Session = Depends(get_session)
 ):
-    service = ProductService(session)
-    product = service.create_product( name=data.name, price=data.price, description=data.description, owner_id=data.owner_id)
-    return product
-@router.get("/{product_id}", response_model=Product | dict)
-def get_product_by_id(
-    product_id: int,
+    service = UserService(session)
+    user = service.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.get("/", response_model=list[UserRead])
+async def get_all_users(
     session: Session = Depends(get_session)
 ):
-    service = ProductService(session)
-    product = service.get_by_id(product_id)
-    if product:
-        return product
-    return {"message": "Product not found"}
-@router.get("/", response_model=list[Product])
-def get_all_products(
+    service = UserService(session)
+    users = service.get_all()
+    return users
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
     session: Session = Depends(get_session)
 ):
-    service = ProductService(session)
-    products = service.get_all()
+    service = UserService(session)
+    success = service.delete_user(user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "User deleted successfully"}
+
+@router.put("/{user_id}", response_model=UserRead)
+async def update_user(
+    user_id: int,
+    data: UserUpdate,
+    session: Session = Depends(get_session)
+):
+    service = UserService(session)
+    user = service.update_user(user_id, name=data.name, email=data.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.get("/{user_id}/products", response_model=list[ProductRead])
+async def get_user_products(
+    user_id: int,
+    session: Session = Depends(get_session)
+):
+    service = UserService(session)
+    products = service.get_user_products(user_id)
+    if isinstance(products, str):
+        raise HTTPException(status_code=404, detail=products)
     return products
-@router.delete("/{product_id}", response_model=dict)
-def delete_product(
-    product_id: int,
-    session: Session = Depends(get_session)
-):
-    service = ProductService(session)
-    success = service.delete_product(product_id)
-    if success:
-        return {"message": "Product deleted successfully"}
-    return {"message": "Product not found"}
-@router.put("/{product_id}", response_model=Product | dict)
-def update_product(
-    product_id: int,
-    data: ProductCreate,
-    session: Session = Depends(get_session)
-):
-    service = ProductService(session)
-    product = service.update_product(
-        product_id,
-        name=data.name,
-        price=data.price,
-        description=data.description
-    )
-    if product:
-        return product
-    return {"message": "Product not found"}
-@router.get("/owner/{owner_id}", response_model=list[Product])
-def get_owner_by_product(
-    product_id: int,
-    session: Session = Depends(get_session)
-):
-    service = ProductService(session)
-    owner = service.get_owner_by_product(product_id)
-    return owner
 
+# Protected endpoints (require authentication)
+@router.get("/me/profile", response_model=UserRead)
+async def get_my_profile(
+    current_user = Depends(get_current_user)  # ✅ Use the correct function
+):
+    return current_user
 
+@router.get("/me/products", response_model=list[ProductRead])
+async def get_my_products(
+    session: Session = Depends(get_session),
+    current_user = Depends(get_current_active_user)  # ✅ Use the correct function
+):
+    service = UserService(session)
+    products = service.get_user_products(current_user.id)
+    if isinstance(products, str):
+        raise HTTPException(status_code=404, detail=products)
+    return products

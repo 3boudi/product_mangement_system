@@ -7,11 +7,11 @@ engine = create_engine(
     pool_pre_ping=True,
 )
 
-
 def create_db_and_tables():
+    # Clear existing tables with CASCADE option
+    SQLModel.metadata.drop_all(engine)
+    # Create all tables
     SQLModel.metadata.create_all(engine)
-
-
 def get_session():
     with Session(engine) as session:
         yield session
