@@ -10,5 +10,5 @@ class Product(SQLModel, table=True):
     description: Optional[str] = None
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     
-    # String reference to avoid circular import
-    owner: Optional["User"] = Relationship(back_populates="products")
+    # Relationship
+    owner: Optional["User"] = Relationship(back_populates="products", sa_relationship_kwargs={"lazy": "select"})
